@@ -105,7 +105,7 @@ client.Connect(func(server string, code byte, err error) {
         panic(err)
     }
 
-    if code != libmqtt.CtrlConn {
+    if code != libmqtt.CodeSuccess {
         // server rejected or in error
         panic(code)
     }
