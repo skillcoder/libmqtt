@@ -14,25 +14,30 @@
 
 .PHONY: test lib client clean fuzz-test
 
+TEST_FLAGS=-v -count=1 -race -pkgdir=vendor -coverprofile=coverage.txt -covermode=atomic
+
+test-reconnect:
+	go test ${TEST_FLAGS} -tags offline -run=TestClient_Reconnect
+
 test:
-	go test -v -run=. -count=1 -race -coverprofile=coverage.txt -covermode=atomic
+	go test ${TEST_FLAGS} -run=.
 
 test-auth:
-	go test -v -count=1 -race -coverprofile=coverage.txt -covermode=atomic -run=TestAuth
+	go test ${TEST_FLAGS} -run=TestAuth
 
 test-conn:
-	go test -v -count=1 -race -coverprofile=coverage.txt -covermode=atomic -run=TestConn
-	go test -v -count=1 -race -coverprofile=coverage.txt -covermode=atomic -run=TestDisConn
+	go test ${TEST_FLAGS} -run=TestConn
+	go test ${TEST_FLAGS} -run=TestDisConn
 
 test-ping:
-	go test -v -count=1 -race -coverprofile=coverage.txt -covermode=atomic -run=TestPing
+	go test ${TEST_FLAGS} -run=TestPing
 
 test-pub:
-	go test -v -count=1 -race -coverprofile=coverage.txt -covermode=atomic -run=TestPub
+	go test ${TEST_FLAGS} -run=TestPub
 
 test-sub:
-	go test -v -count=1 -race -coverprofile=coverage.txt -covermode=atomic -run=TestSub
-	go test -v -count=1 -race -coverprofile=coverage.txt -covermode=atomic -run=TestUnSub
+	go test ${TEST_FLAGS} -run=TestSub
+	go test ${TEST_FLAGS} -run=TestUnSub
 
 .PHONY: all-lib c-lib java-lib py-lib \
 		clean-c-lib clean-java-lib clean-py-lib

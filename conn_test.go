@@ -122,12 +122,14 @@ func initTestData_Conn() {
 func TestConnPacket_Bytes(t *testing.T) {
 	testConnMsg.ProtoVersion = V311
 	testPacketBytes(testConnMsg, testConnMsgBytesV311, t)
+	// testConnMsg.ProtoVersion = V5
 	// testV5Bytes(testConnMsg, testConnMsgBytesV5, t)
 }
 
 func TestConnWillPacket_Bytes(t *testing.T) {
 	testConnWillMsg.ProtoVersion = V311
 	testPacketBytes(testConnWillMsg, testConnWillMsgBytesV311, t)
+	// testConnWillMsg.ProtoVersion = V5
 	// testV5Bytes(testConnWillMsg, testConnWillMsgBytesV5, t)
 }
 
@@ -142,6 +144,7 @@ func TestConnProps_SetProps(t *testing.T) {
 func TestConnAckPacket_Bytes(t *testing.T) {
 	testConnAckMsg.ProtoVersion = V311
 	testPacketBytes(testConnAckMsg, testConnAckMsgBytesV311, t)
+	// testConnAckMsg.ProtoVersion = V5
 	// testV5Bytes(testConnAckMsg, testConnAckMsgBytesV5, t)
 }
 
@@ -156,7 +159,7 @@ func TestConnAckProps_SetProps(t *testing.T) {
 func TestDisConnPacket_Bytes(t *testing.T) {
 	testDisConnMsg.ProtoVersion = V311
 	testPacketBytes(testDisConnMsg, testDisConnMsgBytesV311, t)
-
+	// testDisConnMsg.ProtoVersion = V5
 	// testV5Bytes(testDisConnMsg, testDisConnMsgBytesV5, t)
 }
 

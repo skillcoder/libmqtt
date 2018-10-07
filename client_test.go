@@ -19,6 +19,7 @@ package libmqtt
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"go.uber.org/goleak"
 )
@@ -40,6 +41,8 @@ func plainClient(t *testing.T, exH *extraHandler) Client {
 		WithKeepalive(10, 1.2),
 		WithIdentity("admin", "public"),
 		WithWill("test", Qos0, false, []byte("test data")),
+		WithAutoReconnect(true),
+		WithBackoffStrategy(1*time.Second, 5*time.Second, 1.5),
 	)
 
 	if err != nil {
@@ -63,6 +66,8 @@ func tlsClient(t *testing.T, exH *extraHandler) Client {
 		WithKeepalive(10, 1.2),
 		WithIdentity("admin", "public"),
 		WithWill("test", Qos0, false, []byte("test data")),
+		WithAutoReconnect(true),
+		WithBackoffStrategy(1*time.Second, 5*time.Second, 1.5),
 	)
 
 	if err != nil {

@@ -3,6 +3,7 @@
 
 /fuzz-test
 /test-dir
+/go.sum
 
 coverage.txt
 libmqtt-fuzz.zip

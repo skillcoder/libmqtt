@@ -37,10 +37,10 @@ var (
 	testAuthMsgBytes []byte
 
 	testProps = map[byte][]byte{
-		propKeyAuthMethod:   []byte{0, 4, 'M', 'Q', 'T', 'T'},
-		propKeyAuthData:     []byte{0, 4, 'M', 'Q', 'T', 'T'},
-		propKeyReasonString: []byte{0, 4, 'M', 'Q', 'T', 'T'},
-		propKeyUserProps: []byte{
+		propKeyAuthMethod:   {0, 4, 'M', 'Q', 'T', 'T'},
+		propKeyAuthData:     {0, 4, 'M', 'Q', 'T', 'T'},
+		propKeyReasonString: {0, 4, 'M', 'Q', 'T', 'T'},
+		propKeyUserProps: {
 			0, 2, 'M', 'Q', 0, 2, 'T', 'T',
 		},
 	}

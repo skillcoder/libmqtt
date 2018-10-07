@@ -35,19 +35,7 @@ var (
 )
 
 // Decode will decode one mqtt packet
-func Decode(version ProtoVersion, reader BufferedReader) (Packet, error) {
-	switch version {
-	case V311:
-		return decodeV311Packet(reader)
-	case V5:
-		return decodeV5Packet(reader)
-	default:
-		return nil, ErrUnsupportedVersion
-	}
-}
-
-// decode mqtt v3.1.1 packets
-func decodeV311Packet(r BufferedReader) (Packet, error) {
+func Decode(version ProtoVersion, r BufferedReader) (Packet, error) {
 	header, err := r.ReadByte()
 	if err != nil {
 		return nil, err
@@ -61,7 +49,11 @@ func decodeV311Packet(r BufferedReader) (Packet, error) {
 		case CtrlPingResp:
 			return PingRespPacket, nil
 		case CtrlDisConn:
-			return &DisConnPacket{}, nil
+			if version == V311 {
+				return &DisConnPacket{}, nil
+			} else {
+				return nil, ErrDecodeBadPacket
+			}
 		default:
 			return nil, ErrDecodeBadPacket
 		}
@@ -74,6 +66,19 @@ func decodeV311Packet(r BufferedReader) (Packet, error) {
 		return nil, err
 	}
 
+	switch version {
+	case V311:
+		return decodeV311Packet(header, body, r)
+	case V5:
+		return decodeV5Packet(header, body, r)
+	default:
+		return nil, ErrUnsupportedVersion
+	}
+}
+
+// decode mqtt v3.1.1 packets
+func decodeV311Packet(header byte, body []byte, r BufferedReader) (Packet, error) {
+	var err error
 	switch header >> 4 {
 	case CtrlConn:
 		protocol, body, err := getStringData(body)
@@ -204,31 +209,8 @@ func decodeV311Packet(r BufferedReader) (Packet, error) {
 }
 
 // decode mqtt v5 packets
-func decodeV5Packet(r BufferedReader) (Packet, error) {
-	header, err := r.ReadByte()
-	if err != nil {
-		return nil, err
-	}
-
-	bytesToRead, _ := getRemainLength(r)
-	if bytesToRead == 0 {
-		switch header >> 4 {
-		case CtrlPingReq:
-			return PingReqPacket, nil
-		case CtrlPingResp:
-			return PingRespPacket, nil
-		default:
-			return nil, ErrDecodeBadPacket
-		}
-	} else if bytesToRead < 2 {
-		return nil, ErrDecodeBadPacket
-	}
-
-	body := make([]byte, bytesToRead)
-	if _, err = io.ReadFull(r, body[:]); err != nil {
-		return nil, err
-	}
-
+func decodeV5Packet(header byte, body []byte, r BufferedReader) (Packet, error) {
+	var err error
 	switch header >> 4 {
 	case CtrlConn:
 		protocol, next, err := getStringData(body)

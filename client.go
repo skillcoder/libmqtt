@@ -78,6 +78,14 @@ func WithKeepalive(keepalive uint16, factor float64) Option {
 	}
 }
 
+// WithAutoReconnect set client to auto reconnect to server when connection failed
+func WithAutoReconnect(autoReconnect bool) Option {
+	return func(c *client) error {
+		c.options.autoReconnect = autoReconnect
+		return nil
+	}
+}
+
 // WithBackoffStrategy will set reconnect backoff strategy
 // firstDelay is the time to wait before retrying after the first failure
 // maxDelay defines the upper bound of backoff delay
@@ -199,7 +207,7 @@ func WithTLS(certFile, keyFile, caCert, serverNameOverride string, skipVerify bo
 	}
 }
 
-// WithCustomTLS replaces the TLS options with a custom tls.Config 
+// WithCustomTLS replaces the TLS options with a custom tls.Config
 func WithCustomTLS(config *tls.Config) Option {
 	return func(c *client) error {
 		c.options.tlsConfig = config
@@ -355,6 +363,7 @@ type clientOptions struct {
 	maxDelay        time.Duration
 	firstDelay      time.Duration
 	backoffFactor   float64
+	autoReconnect   bool
 }
 
 // create a client with default options
@@ -525,7 +534,11 @@ func (c *client) connect(server string, h ConnHandler, version ProtoVersion, rec
 		if err != nil {
 			c.log.e("CLI connect with tls failed, err =", err, "server =", server)
 			if h != nil {
-				h(server, math.MaxUint8, err)
+				go h(server, math.MaxUint8, err)
+			}
+
+			if c.options.autoReconnect && !c.isClosing() {
+				goto reconnect
 			}
 			return
 		}
@@ -535,101 +548,108 @@ func (c *client) connect(server string, h ConnHandler, version ProtoVersion, rec
 		if err != nil {
 			c.log.e("CLI connect failed, err =", err, "server =", server)
 			if h != nil {
-				h(server, math.MaxUint8, err)
+				go h(server, math.MaxUint8, err)
+			}
+
+			if c.options.autoReconnect && !c.isClosing() {
+				goto reconnect
 			}
 			return
 		}
 	}
 	defer conn.Close()
-
-	if c.isClosing() {
-		return
-	}
-
-	connImpl := &clientConn{
-		protoVersion: version,
-		parent:       c,
-		name:         server,
-		conn:         conn,
-		connRW:       bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
-		keepaliveC:   make(chan int),
-		logicSendC:   make(chan Packet),
-		netRecvC:     make(chan Packet),
-	}
-	connImpl.ctx, connImpl.exit = context.WithCancel(c.ctx)
-
-	c.workers.Add(2)
-	go connImpl.handleSend()
-	go connImpl.handleRecv()
-
-	connImpl.send(&ConnPacket{
-		Username:     c.options.username,
-		Password:     c.options.password,
-		ClientID:     c.options.clientID,
-		CleanSession: c.options.cleanSession,
-		IsWill:       c.options.isWill,
-		WillQos:      c.options.willQos,
-		WillTopic:    c.options.willTopic,
-		WillMessage:  c.options.willPayload,
-		WillRetain:   c.options.willRetain,
-		Keepalive:    uint16(c.options.keepalive / time.Second),
-	})
-
-	select {
-	case <-c.ctx.Done():
-		return
-	case pkt, more := <-connImpl.netRecvC:
-		if !more {
-			if h != nil {
-				go h(server, math.MaxUint8, ErrDecodeBadPacket)
-			}
-			close(connImpl.logicSendC)
+	{
+		if c.isClosing() {
 			return
 		}
 
-		if pkt.Type() == CtrlConnAck {
-			p := pkt.(*ConnAckPacket)
+		connImpl := &clientConn{
+			protoVersion: version,
+			parent:       c,
+			name:         server,
+			conn:         conn,
+			connRW:       bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)),
+			keepaliveC:   make(chan int),
+			logicSendC:   make(chan Packet),
+			netRecvC:     make(chan Packet),
+		}
+		connImpl.ctx, connImpl.exit = context.WithCancel(c.ctx)
 
-			if p.Code != CodeSuccess {
+		c.workers.Add(2)
+		go connImpl.handleSend()
+		go connImpl.handleRecv()
+
+		connImpl.send(&ConnPacket{
+			Username:     c.options.username,
+			Password:     c.options.password,
+			ClientID:     c.options.clientID,
+			CleanSession: c.options.cleanSession,
+			IsWill:       c.options.isWill,
+			WillQos:      c.options.willQos,
+			WillTopic:    c.options.willTopic,
+			WillMessage:  c.options.willPayload,
+			WillRetain:   c.options.willRetain,
+			Keepalive:    uint16(c.options.keepalive / time.Second),
+		})
+
+		dialTimer := time.NewTimer(c.options.dialTimeout)
+		defer dialTimer.Stop()
+		select {
+		case <-c.ctx.Done():
+			return
+		case pkt, more := <-connImpl.netRecvC:
+			if !more {
+				if h != nil {
+					go h(server, math.MaxUint8, ErrDecodeBadPacket)
+				}
 				close(connImpl.logicSendC)
-				if version > V311 && c.options.protoCompromise && p.Code == CodeUnsupportedProtoVersion {
-					c.workers.Add(1)
-					go c.connect(server, h, version-1, reconnectDelay)
+				return
+			}
+
+			if pkt.Type() == CtrlConnAck {
+				p := pkt.(*ConnAckPacket)
+
+				if p.Code != CodeSuccess {
+					close(connImpl.logicSendC)
+					if version > V311 && c.options.protoCompromise && p.Code == CodeUnsupportedProtoVersion {
+						c.workers.Add(1)
+						go c.connect(server, h, version-1, reconnectDelay)
+						return
+					}
+
+					if h != nil {
+						go h(server, p.Code, nil)
+					}
 					return
 				}
-
+			} else {
+				close(connImpl.logicSendC)
 				if h != nil {
-					go h(server, p.Code, nil)
+					go h(server, math.MaxUint8, ErrDecodeBadPacket)
 				}
 				return
 			}
-		} else {
+		case <-dialTimer.C:
 			close(connImpl.logicSendC)
 			if h != nil {
-				go h(server, math.MaxUint8, ErrDecodeBadPacket)
+				go h(server, math.MaxUint8, ErrTimeOut)
 			}
 			return
 		}
-	case <-time.After(c.options.dialTimeout):
-		close(connImpl.logicSendC)
+
+		c.log.i("CLI connected to server =", server)
 		if h != nil {
-			go h(server, math.MaxUint8, ErrTimeOut)
+			go h(server, CodeSuccess, nil)
 		}
-		return
+
+		// login success, start mqtt logic
+		connImpl.logic()
+
+		if c.isClosing() {
+			return
+		}
 	}
-
-	c.log.i("CLI connected to server =", server)
-	if h != nil {
-		go h(server, CodeSuccess, nil)
-	}
-
-	// login success, start mqtt logic
-	connImpl.logic()
-
-	if c.isClosing() {
-		return
-	}
-
+reconnect:
 	// reconnect
 	c.log.e("CLI reconnecting to server =", server, "delay =", reconnectDelay)
 	time.Sleep(reconnectDelay)
@@ -643,7 +663,8 @@ func (c *client) connect(server string, h ConnHandler, version ProtoVersion, rec
 		reconnectDelay = c.options.maxDelay
 	}
 
-	c.connect(server, h, version, reconnectDelay)
+	c.workers.Add(1)
+	go c.connect(server, h, version, reconnectDelay)
 }
 
 func (c *client) isClosing() bool {

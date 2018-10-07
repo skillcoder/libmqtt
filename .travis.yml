@@ -20,8 +20,9 @@ before_install:
 
 before_script:
   - go get -t -v ./...
+  - make test-reconnect
   - docker run -d --name emq -p 1883:1883 -p 8083:8083 -p 8883:8883 -p 8084:8084 -p 18083:18083 emqttd-docker-v2.3.8
-  - sleep 60
+  - sleep 120
 
 script:
   - make test
